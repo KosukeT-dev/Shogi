@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shogi</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+
+        .game-container {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(30px, 50px));
+            grid-template-rows: repeat(9, minmax(30px, 50px));
+            gap: 1px;
+            background-color: #d4a36a;
+            border: 2px solid #8b4513;
+            padding: 10px;
+        }
+
+        .cell {
+            background-color: #ffd700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .piece {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .piece:hover {
+            transform: scale(1.1);
+        }
+
+        .black {
+            background-color: #333;
+            color: white;
+        }
+
+        .white {
+            background-color: #fff;
+            color: black;
+            transform: rotate(180deg);
+        }
+
+        .selected {
+            box-shadow: 0 0 10px 3px #00ff00;
+        }
+
+        .valid-move::after {
+            content: '';
+            position: absolute;
+            width: 20%;
+            height: 20%;
+            background-color: rgba(0, 255, 0, 0.5);
+            border-radius: 50%;
+        }
+
+        .captured-pieces {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .captured-pieces div {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .captured-piece {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+        }
+
+        .turn-indicator {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .board {
+                grid-template-columns: repeat(9, minmax(20px, 30px));
+                grid-template-rows: repeat(9, minmax(20px, 30px));
+            }
+
+            .piece {
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-container">
+        <h1>Shogi</h1>
+        <div class="turn-indicator">現在のターン: <span id="current-turn">黒</span></div>
+        <div class="board" id="shogi-board"></div>
+        <div class="captured-pieces">
+            <div id="white-captured"></div>
+            <div id="black-captured"></div>
+        </div>
+    </div>
+
+    <script>
+        const initialBoard = [
+            ['L', 'N', 'S', 'G', 'K', 'G', 'S', 'N', 'L'],
+            [' ', 'R', ' ', ' ', ' ', ' ', ' ', 'B', ' '],
+            ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+            [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+            [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+            [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '],
+            ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'],
+            [' ', 'b', ' ', ' ', ' ', ' ', ' ', 'r', ' '],
+            ['l', 'n', 's', 'g', 'k', 'g', 's', 'n', 'l']
+        ];
+
+        const pieceNames = {
+            'L': '香', 'N': '桂', 'S': '銀', 'G': '金', 'K': '玉', 'R': '飛', 'B': '角', 'P': '歩',
+            'l': '香', 'n': '桂', 's': '銀', 'g': '金', 'k': '玉', 'r': '飛', 'b': '角', 'p': '歩',
+            '+P': 'と', '+L': '杏', '+N': '圭', '+S': '全', '+R': '龍', '+B': '馬',
+            '+p': 'と', '+l': '杏', '+n': '圭', '+s': '全', '+r': '龍', '+b': '馬'
+        };
+
+        let board = JSON.parse(JSON.stringify(initialBoard));
+        let selectedPiece = null;
+        let currentTurn = 'black';
+        let capturedPieces = { white: [], black: [] };
+
+        function createBoard() {
+            const boardElement = document.getElementById('shogi-board');
+            boardElement.innerHTML = ''; // Clear existing board
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    if (board[i][j] !== ' ') {
+                        const piece = createPiece(board[i][j], i, j);
+                        cell.appendChild(piece);
+                    }
+                    cell.addEventListener('click', handleCellClick);
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function createPiece(piece, row, col) {
+            const pieceElement = document.createElement('div');
+            pieceElement.className = `piece ${piece.toLowerCase() === piece ? 'black' : 'white'}`;
+            pieceElement.textContent = pieceNames[piece];
+            pieceElement.dataset.piece = piece;
+            pieceElement.dataset.row = row;
+            pieceElement.dataset.col = col;
+            return pieceElement;
+        }
+
+        function handleCellClick(event) {
+            const cell = event.target.closest('.cell');
+            const piece = cell.querySelector('.piece');
+
+            if (selectedPiece) {
+                const fromRow = parseInt(selectedPiece.dataset.row);
+                const fromCol = parseInt(selectedPiece.dataset.col);
+                const toRow = parseInt(cell.dataset.row);
+                const toCol = parseInt(cell.dataset.col);
+
+                if (isValidMove(selectedPiece.dataset.piece, fromRow, fromCol, toRow, toCol)) {
+                    movePiece(fromRow, fromCol, toRow, toCol);
+                    clearSelection();
+                    switchTurn();
+                } else {
+                    clearSelection();
+                }
+            } else if (piece && isPieceOwnedByCurrentPlayer(piece.dataset.piece)) {
+                selectPiece(piece);
+                showValidMoves(piece);
+            }
+        }
+
+        function selectPiece(piece) {
+            selectedPiece = piece;
+            piece.classList.add('selected');
+        }
+
+        function clearSelection() {
+            if (selectedPiece) {
+                selectedPiece.classList.remove('selected');
+                selectedPiece = null;
+            }
+            clearValidMoves();
+        }
+
+        function clearValidMoves() {
+            document.querySelectorAll('.valid-move').forEach(cell => {
+                cell.classList.remove('valid-move');
+            });
+        }
+
+        function showValidMoves(piece) {
+            const row = parseInt(piece.dataset.row);
+            const col = parseInt(piece.dataset.col);
+            const pieceType = piece.dataset.piece;
+
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (isValidMove(pieceType, row, col, i, j)) {
+                        const cell = document.querySelector(`.cell[data-row="${i}"][data-col="${j}"]`);
+                        cell.classList.add('valid-move');
+                    }
+                }
+            }
+        }
+
+        function isValidMove(piece, fromRow, fromCol, toRow, toCol) {
+            const pieceType = piece.toLowerCase();
+            const isBlack = piece === piece.toLowerCase();
+            const direction = isBlack ? -1 : 1;
+
+            if (fromRow === toRow && fromCol === toCol) return false;
+            if (!isWithinBoard(toRow, toCol)) return false;
+            if (isPieceOwnedByCurrentPlayer(board[toRow][toCol])) return false;
+
+            switch (pieceType) {
+                case 'p':
+                    return toCol === fromCol && toRow === fromRow + direction;
+                case '+p':
+                    return Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1 && !(Math.abs(toRow - fromRow) === 1 && Math.abs(toCol - fromCol) === 1 && toRow === fromRow - direction);
+                case 'l':
+                    return toCol === fromCol && (isBlack ? toRow < fromRow : toRow > fromRow) && !isPathBlocked(fromRow, fromCol, toRow, toCol);
+                case 'n':
+                    return (toRow === fromRow + 2 * direction) && (toCol === fromCol - 1 || toCol === fromCol + 1);
+                case 's':
+                    return (Math.abs(toRow - fromRow) === 1 && Math.abs(toCol - fromCol) === 1) || (toRow === fromRow + direction && toCol === fromCol);
+                case 'g':
+                case '+l':
+                case '+n':
+                case '+s':
+                case '+p':
+                case 'k':
+                    return Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1;
+                case 'b':
+                    return Math.abs(toRow - fromRow) === Math.abs(toCol - fromCol) && !isPathBlocked(fromRow, fromCol, toRow, toCol);
+                case '+b':
+                    return (Math.abs(toRow - fromRow) === Math.abs(toCol - fromCol) && !isPathBlocked(fromRow, fromCol, toRow, toCol)) ||
+                        (Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1);
+                case 'r':
+                    return (toRow === fromRow || toCol === fromCol) && !isPathBlocked(fromRow, fromCol, toRow, toCol);
+                case '+r':
+                    return ((toRow === fromRow || toCol === fromCol) && !isPathBlocked(fromRow, fromCol, toRow, toCol)) ||
+                        (Math.abs(toRow - fromRow) <= 1 && Math.abs(toCol - fromCol) <= 1);
+                default:
+                    return false;
+            }
+        }
+
+        function isWithinBoard(row, col) {
+            return row >= 0 && row < 9 && col >= 0 && col < 9;
+        }
+
+        function isPathBlocked(fromRow, fromCol, toRow, toCol) {
+            const rowStep = toRow > fromRow ? 1 : toRow < fromRow ? -1 : 0;
+            const colStep = toCol > fromCol ? 1 : toCol < fromCol ? -1 : 0;
+            let currentRow = fromRow + rowStep;
+            let currentCol = fromCol + colStep;
+
+            while (currentRow !== toRow || currentCol !== toCol) {
+                if (board[currentRow][currentCol] !== ' ') {
+                    return true;
+                }
+                currentRow += rowStep;
+                currentCol += colStep;
+            }
+
+            return false;
+        }
+
+        function movePiece(fromRow, fromCol, toRow, toCol) {
+            const piece = board[fromRow][fromCol];
+            const capturedPiece = board[toRow][toCol];
+
+            if (capturedPiece !== ' ') {
+                capturePiece(capturedPiece);
+            }
+
+            board[toRow][toCol] = piece;
+            board[fromRow][fromCol] = ' ';
+
+            if (canPromote(piece, toRow, fromRow)) {
+                if (confirm('駒を成りますか？')) {
+                    board[toRow][toCol] = promotePiece(piece);
+                }
+            }
+
+            updateBoardUI();
+
+            if (capturedPiece.toLowerCase() === 'k') {
+                alert((currentTurn === 'black' ? '黒' : '白') + 'の勝利です！');
+                resetGame();
+            }
+        }
+
+        function capturePiece(piece) {
+            const capturedBy = currentTurn === 'black' ? 'black' : 'white';
+            capturedPieces[capturedBy].push(piece.toLowerCase());
+            updateCapturedPiecesUI();
+        }
+
+        function updateBoardUI() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+                const piece = board[row][col];
+
+                cell.innerHTML = '';
+                if (piece !== ' ') {
+                    const pieceElement = createPiece(piece, row, col);
+                    cell.appendChild(pieceElement);
+                }
+            });
+        }
+
+        function updateCapturedPiecesUI() {
+            const whiteCapturedElement = document.getElementById('white-captured');
+            const blackCapturedElement = document.getElementById('black-captured');
+
+            whiteCapturedElement.innerHTML = '';
+            blackCapturedElement.innerHTML = '';
+
+            const renderCapturedPieces = (pieces, element) => {
+                const pieceCounts = pieces.reduce((acc, piece) => {
+                    acc[piece] = (acc[piece] || 0) + 1;
+                    return acc;
+                }, {});
+
+                Object.entries(pieceCounts).forEach(([piece, count]) => {
+                    const capturedPiece = document.createElement('div');
+                    capturedPiece.className = `captured-piece ${element.id === 'white-captured' ? 'white' : 'black'}`;
+                    capturedPiece.textContent = `${pieceNames[piece.toUpperCase()]}${count > 1 ? 'x' + count : ''}`;
+                    element.appendChild(capturedPiece);
+                });
+            };
+
+            renderCapturedPieces(capturedPieces.white, whiteCapturedElement);
+            renderCapturedPieces(capturedPieces.black, blackCapturedElement);
+        }
+
+        function switchTurn() {
+            currentTurn = currentTurn === 'black' ? 'white' : 'black';
+            document.getElementById('current-turn').textContent = currentTurn === 'black' ? '黒' : '白';
+        }
+
+        function isPieceOwnedByCurrentPlayer(piece) {
+            if (piece === ' ') return false;
+            return (currentTurn === 'black' && piece.toLowerCase() === piece) ||
+                (currentTurn === 'white' && piece.toUpperCase() === piece);
+        }
+
+        function canPromote(piece, toRow, fromRow) {
+            const promotionZone = currentTurn === 'black' ? 2 : 6;
+            const isPromotionPiece = ['P', 'L', 'N', 'S', 'R', 'B', 'p', 'l', 'n', 's', 'r', 'b'].includes(piece);
+            return isPromotionPiece && (toRow <= promotionZone && fromRow > promotionZone) || (toRow >= promotionZone && fromRow < promotionZone);
+        }
+
+        function promotePiece(piece) {
+            const promotionMap = {
+                'P': '+P', 'L': '+L', 'N': '+N', 'S': '+S', 'R': '+R', 'B': '+B',
+                'p': '+p', 'l': '+l', 'n': '+n', 's': '+s', 'r': '+r', 'b': '+b'
+            };
+            return promotionMap[piece] || piece;
+        }
+
+        function resetGame() {
+            board = JSON.parse(JSON.stringify(initialBoard));
+            currentTurn = 'black';
+            capturedPieces = { white: [], black: [] };
+            createBoard();
+            updateCapturedPiecesUI();
+            document.getElementById('current-turn').textContent = '黒';
+        }
+
+        createBoard();
+    </script>
+</body>
+
+</html>
